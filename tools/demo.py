@@ -8,10 +8,12 @@ import torch
 
 from pcdet.config import cfg, cfg_from_yaml_file
 from pcdet.datasets import DatasetTemplate
+from pcdet.datasets import KittiDataset
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
 from visual_utils import visualize_utils as V
 
+from torch.multiprocessing import Pool
 
 class DemoDataset(DatasetTemplate):
     def __init__(self, dataset_cfg, class_names, training=True, root_path=None, logger=None, ext='.bin'):
@@ -68,6 +70,41 @@ def parse_config():
 
     return args, cfg
 
+def gen_data(demo_dataset, loc, model, logger):
+    output_dir = '/home/samuel/shared_dir/OpenPCDet/output/demo'
+    ext = '.png'
+    for idx, data_dict in enumerate(demo_dataset):
+        if idx in set(range(0, 4200)) - set([int(i.split('/')[-1].split('.')[0]) for i in glob.glob(str(Path(output_dir+'/'+loc.split('/')[-1].split('.')[0]+'/threshold_0/images/') / '*.png'))]):
+            logger.info(f'Generating: \t{idx + 1}')
+            data_dict = demo_dataset.collate_batch([data_dict])
+            load_data_to_gpu(data_dict)
+            pred_dicts, _ = model.forward(data_dict)
+            data_dict = load_data_to_cpu(data_dict)
+            pred_dicts[0] = load_data_to_cpu(pred_dicts[0])
+            yield (data_dict['points'], pred_dicts, loc, idx)
+        elif idx >= 4200:
+            return
+
+def visualize(data_dict_points, pred_dicts, loc, idx):
+    print(f'Visualizing sample index: \t{idx + 1}')
+    output_dir = '/home/samuel/shared_dir/OpenPCDet/output/demo'
+    fig = V.draw_scenes(
+        points=data_dict_points[:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
+        ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels'], fig=None
+    )
+    mlab.savefig(output_dir+'/'+loc.split('/')[-1].split('.')[0]+'/threshold_0/images/'+str(idx)+'.png', figure=fig, size=(1920, 1080))
+    mlab.close()
+    print(f'Finished visualizing sample index: \t{idx + 1}')
+
+def load_data_to_cpu(batch_dict):
+    for key, val in batch_dict.items():
+        if key in ['frame_id', 'metadata', 'calib', 'image_shape']:
+            continue
+        if isinstance(val, np.ndarray):
+            batch_dict[key] = torch.from_numpy(val).cpu()
+        elif isinstance(val, torch.Tensor):
+            batch_dict[key] = val.float().cpu()
+    return batch_dict
 
 def main():
     args, cfg = parse_config()
@@ -78,24 +115,35 @@ def main():
         root_path=Path(args.data_path), ext=args.ext, logger=logger
     )
     logger.info(f'Total number of samples: \t{len(demo_dataset)}')
+    print('torch.cuda.is_available():', torch.cuda.is_available())
 
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset)
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.cuda()
     model.eval()
+    output_dir = '/home/samuel/shared_dir/OpenPCDet/output/demo'
+    mlab.options.offscreen = True
+    # pool = Pool()
     with torch.no_grad():
-        for idx, data_dict in enumerate(demo_dataset):
-            logger.info(f'Visualized sample index: \t{idx + 1}')
-            data_dict = demo_dataset.collate_batch([data_dict])
-            load_data_to_gpu(data_dict)
-            pred_dicts, _ = model.forward(data_dict)
-
-            V.draw_scenes(
-                points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
-                ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels']
-            )
-            mlab.show(stop=True)
-
+        # data = []
+        # for idx, data_dict in enumerate(demo_dataset):
+        #     if idx >= 2400 and idx < 3000:
+        #         logger.info(f'Visualized sample index: \t{idx + 1}')
+        #         data_dict = demo_dataset.collate_batch([data_dict])
+        #         load_data_to_gpu(data_dict)
+        #         pred_dicts, _ = model.forward(data_dict)
+        #         data.append([load_data_to_cpu(data_dict), pred_dicts, args.ckpt, idx])
+                # fig = V.draw_scenes(
+                #     points=data_dict['points'][:, 1:], ref_boxes=pred_dicts[0]['pred_boxes'],
+                #     ref_scores=pred_dicts[0]['pred_scores'], ref_labels=pred_dicts[0]['pred_labels'], fig=None
+                # )
+                # mlab.savefig(output_dir+'/'+args.ckpt.split('/')[-1].split('.')[0]+'/threshold_0/images/'+str(idx)+'.png', figure=fig, size=(1920, 1080))
+                # mlab.close()
+                # mlab.show(stop=True)
+        params = gen_data(demo_dataset, args.ckpt, model, logger)
+        with Pool() as p:
+            p.starmap(visualize, params)
+        # pool.close()
     logger.info('Demo done.')
 
 

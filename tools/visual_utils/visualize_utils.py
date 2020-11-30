@@ -36,7 +36,7 @@ def rotate_points_along_z(points, angle):
         -sina, cosa, zeros,
         zeros, zeros, ones
     ), dim=1).view(-1, 3, 3).float()
-    points_rot = torch.matmul(points[:, :, 0:3], rot_matrix)
+    points_rot = torch.from_numpy(np.matmul(points[:, :, 0:3].numpy(), rot_matrix.numpy())).float()
     points_rot = torch.cat((points_rot, points[:, :, 3:]), dim=-1)
     return points_rot.numpy() if is_numpy else points_rot
 
@@ -139,7 +139,7 @@ def draw_multi_grid_range(fig, grid_size=20, bv_range=(-60, -60, 60, 60)):
     return fig
 
 
-def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_scores=None, ref_labels=None):
+def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_scores=None, ref_labels=None, fig=None):
     if not isinstance(points, np.ndarray):
         points = points.cpu().numpy()
     if ref_boxes is not None and not isinstance(ref_boxes, np.ndarray):
@@ -151,7 +151,7 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_scores=None, ref_labe
     if ref_labels is not None and not isinstance(ref_labels, np.ndarray):
         ref_labels = ref_labels.cpu().numpy()
 
-    fig = visualize_pts(points)
+    fig = visualize_pts(points, fig=fig)
     fig = draw_multi_grid_range(fig, bv_range=(0, -40, 80, 40))
     if gt_boxes is not None:
         corners3d = boxes_to_corners_3d(gt_boxes)
@@ -162,11 +162,12 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_scores=None, ref_labe
         if ref_labels is None:
             fig = draw_corners3d(ref_corners3d, fig=fig, color=(0, 1, 0), cls=ref_scores, max_num=100)
         else:
-            for k in range(ref_labels.min(), ref_labels.max() + 1):
+            for k in range(int(ref_labels.min()), int(ref_labels.max()) + 1):
                 cur_color = tuple(box_colormap[k % len(box_colormap)])
                 mask = (ref_labels == k)
                 fig = draw_corners3d(ref_corners3d[mask], fig=fig, color=cur_color, cls=ref_scores[mask], max_num=100)
-    mlab.view(azimuth=-179, elevation=54.0, distance=104.0, roll=90.0)
+    # mlab.view(azimuth=-179, elevation=54.0, distance=104.0, roll=90.0)
+    mlab.view(azimuth=-179, elevation=70.0, distance=140.0, roll=90.0)
     return fig
 
 
@@ -186,30 +187,31 @@ def draw_corners3d(corners3d, fig, color=(1, 1, 1), line_width=2, cls=None, tag=
     for n in range(num):
         b = corners3d[n]  # (8, 3)
 
-        if cls is not None:
+        if cls is not None and cls[n] >= 0:
+            color = (color[0] * cls[n], color[1] * cls[n], color[2] * cls[n])
             if isinstance(cls, np.ndarray):
                 mlab.text3d(b[6, 0], b[6, 1], b[6, 2], '%.2f' % cls[n], scale=(0.3, 0.3, 0.3), color=color, figure=fig)
             else:
                 mlab.text3d(b[6, 0], b[6, 1], b[6, 2], '%s' % cls[n], scale=(0.3, 0.3, 0.3), color=color, figure=fig)
 
-        for k in range(0, 4):
-            i, j = k, (k + 1) % 4
+            for k in range(0, 4):
+                i, j = k, (k + 1) % 4
+                mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
+                            line_width=line_width, figure=fig)
+
+                i, j = k + 4, (k + 1) % 4 + 4
+                mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
+                            line_width=line_width, figure=fig)
+
+                i, j = k, k + 4
+                mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
+                            line_width=line_width, figure=fig)
+
+            i, j = 0, 5
             mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
                         line_width=line_width, figure=fig)
-
-            i, j = k + 4, (k + 1) % 4 + 4
+            i, j = 1, 4
             mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
                         line_width=line_width, figure=fig)
-
-            i, j = k, k + 4
-            mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
-                        line_width=line_width, figure=fig)
-
-        i, j = 0, 5
-        mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
-                    line_width=line_width, figure=fig)
-        i, j = 1, 4
-        mlab.plot3d([b[i, 0], b[j, 0]], [b[i, 1], b[j, 1]], [b[i, 2], b[j, 2]], color=color, tube_radius=tube_radius,
-                    line_width=line_width, figure=fig)
 
     return fig
