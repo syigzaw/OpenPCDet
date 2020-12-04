@@ -72,7 +72,6 @@ def parse_config():
 
 def gen_data(demo_dataset, loc, model, logger):
     output_dir = '/home/samuel/shared_dir/OpenPCDet/output/demo'
-    ext = '.png'
     for idx, data_dict in enumerate(demo_dataset):
         if idx in set(range(0, 4200)) - set([int(i.split('/')[-1].split('.')[0]) for i in glob.glob(str(Path(output_dir+'/'+loc.split('/')[-1].split('.')[0]+'/threshold_0/images/') / '*.png'))]):
             logger.info(f'Generating: \t{idx + 1}')
