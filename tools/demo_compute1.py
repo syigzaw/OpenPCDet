@@ -3,6 +3,7 @@ import glob
 from pathlib import Path
 
 import numpy as np
+from npy_append_array import NpyAppendArray
 import torch
 
 from pcdet.config import cfg, cfg_from_yaml_file
@@ -38,7 +39,7 @@ class DemoDataset(DatasetTemplate):
         if self.ext == '.bin':
             points = np.fromfile(self.sample_file_list[index], dtype=np.float32).reshape(-1, 4)
         elif self.ext == '.npy':
-            points = np.load(self.sample_file_list[index])
+            points = np.load(self.sample_file_list[index], mmap_mode='r')
         else:
             raise NotImplementedError
 
@@ -53,8 +54,8 @@ class DemoDataset(DatasetTemplate):
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--numpy', type=str, help='Location of the output Numpy file.')    
-    parser.add_argument('--pred', type=str, help='Location of the output object detection prediction files.')    
+    parser.add_argument('--numpy_file', type=str, help='The output Numpy file.')    
+    parser.add_argument('--pred_file', type=str, help='The output object detection prediction file.')    
     parser.add_argument('--cfg_file', type=str, default='cfgs/kitti_models/pointpillar.yaml', help='specify the config for demo')
     parser.add_argument('--ckpt', type=str, default='/root/OpenPCDet/models/pointpillar_7728.pth', help='specify the pretrained model')
     parser.add_argument('--ext', type=str, default='.npy', help='specify the extension of your point cloud data file')
@@ -70,7 +71,7 @@ def main(args):
     logger.info('-----------------Quick Demo of OpenPCDet-------------------------')
     demo_dataset = DemoDataset(
         dataset_cfg=cfg.DATA_CONFIG, class_names=cfg.CLASS_NAMES, training=False,
-        root_path=Path(args.numpy), ext=args.ext, logger=logger
+        root_path=Path(args.numpy_file), ext=args.ext, logger=logger
     )
     logger.info(f'Total number of samples: \t{len(demo_dataset)}')
     print('torch.cuda.is_available():', torch.cuda.is_available())
@@ -78,13 +79,14 @@ def main(args):
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=demo_dataset)
     model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=True)
     model.eval()
+    npaa = NpyAppendArray(args.pred_file)
     with torch.no_grad():
         for idx, data_dict in enumerate(demo_dataset):
             logger.info(f'Generating: \t{idx + 1}')
             data_dict = demo_dataset.collate_batch([data_dict])
             pred_dicts, _ = model.forward(data_dict)
 
-            np.save('{}/{:0>8}.npy'.format(Path(args.pred).mkdir(parents=True, exist_ok=True), idx), pred_dicts[0].numpy())
+            npaa.append(pred_dicts[0].numpy())
 
     logger.info('Demo done.')
 

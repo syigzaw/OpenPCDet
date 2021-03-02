@@ -1,13 +1,13 @@
 import sensor_msgs.point_cloud2 as pc2
 import rosbag
 import numpy as np
+from npy_append_array import NpyAppendArray
 import argparse
-from pathlib import Path
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--bag', type=str, help='Location of the input bag file.')
-    parser.add_argument('--numpy', type=str, help='Location of the output Numpy files.')    
+    parser.add_argument('--bag_file', type=str, help='The input bag file.')
+    parser.add_argument('--numpy_file', type=str, help='The output Numpy file. To load this file, use np.load(filename, mmap_mode="r")')
     args = parser.parse_args()
     return args
 
@@ -15,6 +15,7 @@ def main(args):
     bag = rosbag.Bag(args.bag)
     count = 0
     print(bag)
+    npaa = NpyAppendArray(args.numpy_file)
     for topic, msg, t in bag.read_messages(topics=['/points_raw']):
         count += 1
         if count % 1000 == 0:
@@ -25,7 +26,7 @@ def main(args):
         frame = np.array(frame)
         frame[:, 3] = np.clip(frame[:, 3], 0, 40)
         frame[:, 3] /= np.max(frame[:, 3])
-        np.save('{}/{:0>8}.npy'.format(Path(args.numpy).mkdir(parents=True, exist_ok=True), count), frame)
+        npaa.append(frame)
     bag.close()
 
 if __name__ == '__main__':
