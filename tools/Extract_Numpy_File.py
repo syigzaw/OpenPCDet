@@ -6,8 +6,8 @@ import argparse
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--bag_file', type=str, help='The input bag file.')
-    parser.add_argument('--numpy_file', type=str, help='The output Numpy file. To load this file, use np.load(filename, mmap_mode="r")')
+    parser.add_argument('--bag', type=str, help='The input bag file.')
+    parser.add_argument('--numpy', type=str, help='The output Numpy file. To load this file, use np.load(filename, mmap_mode="r")')
     args = parser.parse_args()
     return args
 
@@ -15,7 +15,7 @@ def main(args):
     bag = rosbag.Bag(args.bag)
     count = 0
     print(bag)
-    npaa = NpyAppendArray(args.numpy_file)
+    npaa = NpyAppendArray(args.numpy)
     for topic, msg, t in bag.read_messages(topics=['/points_raw']):
         count += 1
         if count % 1000 == 0:
